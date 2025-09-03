@@ -177,6 +177,12 @@ def run(
     else:
         working_dir = os.getcwd()
 
+    # Synchronize directory manager with CLI's working directory
+    if hasattr(cli_console, "directory_manager"):
+        from trae_agent.utils.working_directory_manager import WorkingDirectoryManager
+
+        cli_console.directory_manager = WorkingDirectoryManager(working_dir)
+
     # Ensure working directory is an absolute path
     if not Path(working_dir).is_absolute():
         console.print(
@@ -185,8 +191,14 @@ def run(
         sys.exit(1)
 
     try:
+        # Use directory manager paths if available (supports multiple directories)
+        if hasattr(cli_console, "directory_manager"):
+            project_path = cli_console.directory_manager.get_agent_project_path()
+        else:
+            project_path = working_dir
+
         task_args = {
-            "project_path": working_dir,
+            "project_path": project_path,
             "issue": task,
             "must_patch": "true" if must_patch else "false",
             "patch_path": patch_path,
@@ -320,12 +332,28 @@ async def _run_simple_interactive_loop(
     trajectory_file: str | None,
 ):
     """Run the interactive loop for simple console."""
+    # Set agent context for slash commands if console supports it
+    if hasattr(cli_console, "set_agent_context"):
+        cli_console.set_agent_context(agent, agent.agent_config)
+
     while True:
         try:
             task = cli_console.get_task_input()
             if task is None:
                 console.print("[green]Goodbye![/green]")
                 break
+
+            # Check for slash commands first (new command system)
+            if hasattr(cli_console, "_handle_slash_command"):
+                was_slash_command, generated_task = await cli_console._handle_slash_command(task)
+                if was_slash_command:
+                    if generated_task:
+                        # Slash command generated a task for the agent
+                        task = generated_task
+                    else:
+                        # Slash command was handled, continue to next input
+                        continue
+                # If not a slash command, fall through to existing logic
 
             if task.lower() == "help":
                 console.print(
@@ -343,6 +371,12 @@ async def _run_simple_interactive_loop(
                 continue
 
             working_dir = cli_console.get_working_dir_input()
+
+            # Use directory manager paths if available (supports multiple directories)
+            if hasattr(cli_console, "directory_manager"):
+                project_path = cli_console.directory_manager.get_agent_project_path()
+            else:
+                project_path = working_dir
 
             if task.lower() == "status":
                 console.print(
@@ -366,7 +400,7 @@ async def _run_simple_interactive_loop(
             console.print(f"[blue]Trajectory will be saved to: {trajectory_file}[/blue]")
 
             task_args = {
-                "project_path": working_dir,
+                "project_path": project_path,
                 "issue": task,
                 "must_patch": "false",
             }

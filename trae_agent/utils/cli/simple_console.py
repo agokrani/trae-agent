@@ -4,6 +4,7 @@
 """Simple CLI Console implementation."""
 
 import asyncio
+import os
 from typing import override
 
 from rich.console import Console
@@ -12,6 +13,15 @@ from rich.panel import Panel
 from rich.table import Table
 
 from trae_agent.agent.agent_basics import AgentExecution, AgentState, AgentStep, AgentStepState
+from trae_agent.commands import CommandContext, CommandRegistry
+from trae_agent.commands.built_in import (
+    AddDirCommand,
+    ClearCommand,
+    ExitCommand,
+    HelpCommand,
+    StatusCommand,
+    ToolsCommand,
+)
 from trae_agent.utils.cli.cli_console import (
     AGENT_STATE_INFO,
     CLIConsole,
@@ -20,6 +30,7 @@ from trae_agent.utils.cli.cli_console import (
     generate_agent_step_table,
 )
 from trae_agent.utils.config import LakeviewConfig
+from trae_agent.utils.working_directory_manager import WorkingDirectoryManager
 
 
 class SimpleCLIConsole(CLIConsole):
@@ -36,6 +47,31 @@ class SimpleCLIConsole(CLIConsole):
         """
         super().__init__(mode, lakeview_config)
         self.console: Console = Console()
+
+        # Initialize command registry
+        self.command_registry = CommandRegistry()
+        self._register_built_in_commands()
+
+        # Store context for commands (will be updated when agent is available)
+        self.agent = None
+        self.config = None
+
+        # Working directories management
+        self.directory_manager = WorkingDirectoryManager()
+
+    def _register_built_in_commands(self):
+        """Register built-in commands."""
+        self.command_registry.register_command(HelpCommand())
+        self.command_registry.register_command(StatusCommand())
+        self.command_registry.register_command(ClearCommand())
+        self.command_registry.register_command(ExitCommand())
+        self.command_registry.register_command(ToolsCommand())
+        self.command_registry.register_command(AddDirCommand())
+
+    def set_agent_context(self, agent, config=None):
+        """Set the agent and config context for command execution."""
+        self.agent = agent
+        self.config = config
 
     @override
     def update_status(
@@ -180,11 +216,54 @@ class SimpleCLIConsole(CLIConsole):
         )
 
     @override
-    def print(self, message: str, color: str = "blue", bold: bool = False):
+    def print(self, message, color: str = "blue", bold: bool = False):
         """Print a message to the console."""
-        message = f"[bold]{message}[/bold]" if bold else message
-        message = f"[{color}]{message}[/{color}]"
-        self.console.print(message)
+        # Handle both string messages and Rich objects (like Panel)
+        if isinstance(message, str):
+            formatted_message = f"[bold]{message}[/bold]" if bold else message
+            formatted_message = f"[{color}]{formatted_message}[/{color}]"
+            self.console.print(formatted_message)
+        else:
+            # Rich object (Panel, Table, etc.) - print directly
+            self.console.print(message)
+
+    async def _handle_slash_command(self, user_input: str) -> tuple[bool, str | None]:
+        """Handle slash command execution.
+
+        Args:
+            user_input: The user input to check and potentially execute
+
+        Returns:
+            Tuple of (was_slash_command, task_to_return)
+            - was_slash_command: True if input was a slash command
+            - task_to_return: Task string to return for agent execution, or None
+        """
+        if not self.command_registry.is_slash_command(user_input):
+            return False, None
+
+        # Create command context
+        context = CommandContext(
+            console=self, agent=self.agent, config=self.config, working_dir=os.getcwd()
+        )
+
+        # Execute the command
+        result = await self.command_registry.execute_if_command(user_input, context)
+
+        if result is None:
+            # This shouldn't happen since we checked is_slash_command
+            return True, None
+
+        if not result.success:
+            # Print error message
+            self.console.print(f"[red]Error: {result.message}[/red]")
+            return True, None
+
+        if result.should_continue_to_agent:
+            # Command generated a task for the agent
+            return True, result.generated_task
+        else:
+            # Command was handled, no agent execution needed
+            return True, None
 
     @override
     def get_task_input(self) -> str | None:

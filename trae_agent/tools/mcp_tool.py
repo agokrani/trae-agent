@@ -37,7 +37,7 @@ class MCPTool(Tool):
                     name=name,
                     type=prop["type"],
                     items=prop.get("items", None),
-                    description=prop["description"],
+                    description=prop.get("description") or prop.get("title"),
                     required=name in required,
                 )
                 parameters.append(tool_para)

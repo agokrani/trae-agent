@@ -51,7 +51,7 @@ class MCPClient:
         elif mcp_server_config.command:
             params = StdioServerParameters(
                 command=mcp_server_config.command,
-                args=mcp_server_config.args,
+                args=mcp_server_config.args if mcp_server_config.args else [],
                 env=mcp_server_config.env,
                 cwd=mcp_server_config.cwd,
             )

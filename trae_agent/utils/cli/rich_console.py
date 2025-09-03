@@ -16,6 +16,15 @@ from textual.reactive import reactive
 from textual.widgets import Footer, Header, Input, RichLog, Static
 
 from trae_agent.agent.agent_basics import AgentExecution, AgentStep, AgentStepState
+from trae_agent.commands import CommandContext, CommandRegistry
+from trae_agent.commands.built_in import (
+    AddDirCommand,
+    ClearCommand,
+    ExitCommand,
+    HelpCommand,
+    StatusCommand,
+    ToolsCommand,
+)
 from trae_agent.utils.cli.cli_console import (
     AGENT_STATE_INFO,
     CLIConsole,
@@ -24,6 +33,7 @@ from trae_agent.utils.cli.cli_console import (
     generate_agent_step_table,
 )
 from trae_agent.utils.config import LakeviewConfig
+from trae_agent.utils.working_directory_manager import WorkingDirectoryManager
 
 
 class TokenDisplay(Static):
@@ -161,6 +171,67 @@ class RichConsoleApp(App[None]):
         if not task:
             return
 
+        # Check for slash commands first (new command system)
+        _ = asyncio.create_task(self._process_input_with_slash_commands(event, task))
+
+    async def _handle_slash_command_rich(self, task: str) -> tuple[bool, str | None]:
+        """Handle slash command execution for rich console.
+
+        Args:
+            task: The user input to check and potentially execute
+
+        Returns:
+            Tuple of (was_slash_command, task_to_return)
+        """
+        # Access command registry from console_impl
+        if not self.console_impl.command_registry.is_slash_command(task):
+            return False, None
+
+        # Create command context - pass the RichCLIConsole, not the app
+        context = CommandContext(
+            console=self.console_impl,
+            agent=self.console_impl.agent,
+            config=getattr(self.console_impl, "config", None),
+            working_dir=os.getcwd(),
+        )
+
+        # Execute the command
+        result = await self.console_impl.command_registry.execute_if_command(task, context)
+
+        if result is None:
+            return True, None
+
+        if not result.success:
+            # Print error message to execution log
+            if self.execution_log:
+                _ = self.execution_log.write(f"[red]Error: {result.message}[/red]")
+            return True, None
+
+        if result.should_continue_to_agent:
+            # Command generated a task for the agent
+            return True, result.generated_task
+        else:
+            # Command was handled, no agent execution needed
+            return True, None
+
+    async def _process_input_with_slash_commands(self, event: Input.Submitted, task: str):
+        """Process input with slash command support."""
+        was_slash_command, generated_task = await self._handle_slash_command_rich(task)
+        if was_slash_command:
+            # Clear input field for slash commands
+            event.input.value = ""
+            if generated_task:
+                # Slash command generated a task for the agent - execute it
+                task = generated_task
+                self._execute_regular_task_logic(task)
+            # Otherwise command was handled, nothing more to do
+            return
+
+        # Not a slash command, handle with existing logic
+        self._handle_regular_commands(event, task)
+
+    def _handle_regular_commands(self, event: Input.Submitted, task: str):
+        """Handle regular (non-slash) commands with existing logic."""
         if task.lower() in ["exit", "quit"]:
             self.exit()
             return
@@ -208,10 +279,15 @@ class RichConsoleApp(App[None]):
             return
 
         # Execute the task
+        self._execute_regular_task_logic(task)
+
+    def _execute_regular_task_logic(self, task: str):
+        """Execute a regular task (shared logic for both slash-generated and regular tasks)."""
         self.current_task = task
         if self.task_display:
             _ = self.task_display.update(Panel(task, title="Current Task", border_style="green"))
-        event.input.value = ""
+        if self.task_input:
+            self.task_input.value = ""
         self.is_running_task = True
 
         # Start task execution
@@ -232,8 +308,14 @@ class RichConsoleApp(App[None]):
                 # For now, use current directory
                 pass
 
+            # Use directory manager paths if available (supports multiple directories)
+            if hasattr(self.console_impl, "directory_manager"):
+                project_path = self.console_impl.directory_manager.get_agent_project_path()
+            else:
+                project_path = working_dir
+
             task_args = {
-                "project_path": working_dir,
+                "project_path": project_path,
                 "issue": task,
                 "must_patch": "false",
             }
@@ -294,11 +376,27 @@ class RichCLIConsole(CLIConsole):
         self.initial_task: str | None = None
         self._is_running: bool = False
 
+        # Initialize command registry
+        self.command_registry = CommandRegistry()
+        self._register_built_in_commands()
+
         # Agent context for interactive mode
         self.agent = None
         self.trae_agent_config = None
         self.config_file = None
         self.trajectory_file = None
+
+        # Working directories management
+        self.directory_manager = WorkingDirectoryManager()
+
+    def _register_built_in_commands(self):
+        """Register built-in commands."""
+        self.command_registry.register_command(HelpCommand())
+        self.command_registry.register_command(StatusCommand())
+        self.command_registry.register_command(ClearCommand())
+        self.command_registry.register_command(ExitCommand())
+        self.command_registry.register_command(ToolsCommand())
+        self.command_registry.register_command(AddDirCommand())
 
     @override
     async def start(self):
@@ -350,12 +448,17 @@ class RichCLIConsole(CLIConsole):
             )
 
     @override
-    def print(self, message: str, color: str = "blue", bold: bool = False):
+    def print(self, message, color: str = "blue", bold: bool = False):
         """Print a message to the console."""
         if self.app and self.app.execution_log:
-            formatted_message = f"[bold]{message}[/bold]" if bold else message
-            formatted_message = f"[{color}]{formatted_message}[/{color}]"
-            _ = self.app.execution_log.write(formatted_message)
+            # Handle both string messages and Rich objects (like Panel)
+            if isinstance(message, str):
+                formatted_message = f"[bold]{message}[/bold]" if bold else message
+                formatted_message = f"[{color}]{formatted_message}[/{color}]"
+                _ = self.app.execution_log.write(formatted_message)
+            else:
+                # Rich object (Panel, Table, etc.) - write directly
+                _ = self.app.execution_log.write(message)
 
     @override
     def get_task_input(self) -> str | None:
