@@ -32,11 +32,25 @@ class OpenAIClient(BaseLLMClient):
 
         self.client: openai.OpenAI = openai.OpenAI(api_key=self.api_key, base_url=self.base_url)
         self.message_history: ResponseInputParam = []
+        self.current_response_id: str | None = None
+        self.pending_function_calls: dict[str, ResponseFunctionToolCallParam] = {}
+        self.pending_reasoning_blocks: dict[str, dict] = {}
+        self.use_conversation_state: bool = True
 
     @override
     def set_chat_history(self, messages: list[LLMMessage]) -> None:
         """Set the chat history."""
-        self.message_history = self.parse_messages(messages)
+        if not self.use_conversation_state:
+            self.message_history = self.parse_messages(messages)
+        # When using conversation state, we don't manually manage history
+        # The conversation is managed by OpenAI via response_id
+
+    def reset_conversation_state(self) -> None:
+        """Reset conversation state for debugging or new conversation."""
+        self.current_response_id = None
+        self.pending_function_calls.clear()
+        self.pending_reasoning_blocks.clear()
+        self.message_history.clear()
 
     def _create_openai_response(
         self,
@@ -45,18 +59,34 @@ class OpenAIClient(BaseLLMClient):
         tool_schemas: list[ToolParam] | None,
     ) -> Response:
         """Create a response using OpenAI API. This method will be decorated with retry logic."""
-        return self.client.responses.create(
-            input=api_call_input,
-            model=model_config.model,
-            tools=tool_schemas if tool_schemas else openai.NOT_GIVEN,
-            temperature=model_config.temperature
-            if "o3" not in model_config.model
-            and "o4-mini" not in model_config.model
-            and "gpt-5" not in model_config.model
-            else openai.NOT_GIVEN,
-            top_p=model_config.top_p,
-            max_output_tokens=model_config.max_tokens,
-        )
+
+        api_params = {
+            "input": api_call_input,
+            "model": model_config.model,
+            "tools": tool_schemas if tool_schemas else openai.NOT_GIVEN,
+            "top_p": model_config.top_p,
+            "max_output_tokens": model_config.max_tokens,
+        }
+
+        # Only add temperature for models that support it
+        if not any(model in model_config.model for model in ["o3", "o4-mini", "gpt-5"]):
+            api_params["temperature"] = model_config.temperature
+
+        # Add high reasoning effort for all reasoning models
+        if any(model in model_config.model for model in ["o3", "o4-mini", "gpt-5"]):
+            api_params["reasoning"] = {"effort": "high"}
+
+        # Use native state management
+        if self.use_conversation_state:
+            api_params["store"] = True
+            if self.current_response_id:
+                api_params["previous_response_id"] = self.current_response_id
+
+        try:
+            response = self.client.responses.create(**api_params)
+            return response
+        except Exception:
+            raise
 
     @override
     def chat(
@@ -83,11 +113,16 @@ class OpenAIClient(BaseLLMClient):
             ]
 
         api_call_input: ResponseInputParam = []
-        if reuse_history:
+
+        # When using conversation state, we let OpenAI handle the history
+        # Only manually add history if not using conversation state
+        if reuse_history and not self.use_conversation_state:
             api_call_input.extend(self.message_history)
+
         api_call_input.extend(openai_messages)
 
         # Apply retry decorator to the API call
+
         retry_decorator = retry_with(
             func=self._create_openai_response,
             provider_name="OpenAI",
@@ -97,8 +132,25 @@ class OpenAIClient(BaseLLMClient):
 
         content = ""
         tool_calls: list[ToolCall] = []
+
+        # Capture response ID for future conversation state
+        if hasattr(response, "id") and response.id:
+            self.current_response_id = response.id
+
         for output_block in response.output:
-            if output_block.type == "function_call":
+            if output_block.type == "reasoning":
+                # In manual history mode, we need to store reasoning blocks that are associated with function calls
+                if not self.use_conversation_state:
+                    reasoning_block = {
+                        "type": "reasoning",
+                        "id": output_block.id,
+                        "summary": "Model reasoning process",
+                    }
+                    # Store reasoning block for potential pairing with function calls
+                    if output_block.id:
+                        self.pending_reasoning_blocks[output_block.id] = reasoning_block
+                # Otherwise skip reasoning blocks in auto mode
+            elif output_block.type == "function_call":
                 tool_calls.append(
                     ToolCall(
                         call_id=output_block.call_id,
@@ -119,7 +171,12 @@ class OpenAIClient(BaseLLMClient):
                     tool_call_param["status"] = output_block.status
                 if output_block.id:
                     tool_call_param["id"] = output_block.id
-                self.message_history.append(tool_call_param)
+
+                # Store pending function calls for proper lifecycle management
+                self.pending_function_calls[output_block.call_id] = tool_call_param
+
+                # Don't add function calls to history immediately in manual mode
+                # They will be added when their results are processed to ensure proper ordering
             elif output_block.type == "message":
                 content = "".join(
                     content_block.text
@@ -127,7 +184,8 @@ class OpenAIClient(BaseLLMClient):
                     if content_block.type == "output_text"
                 )
 
-        if content != "":
+        # Only add content to history if not using conversation state
+        if content != "" and not self.use_conversation_state:
             self.message_history.append(
                 EasyInputMessageParam(content=content, role="assistant", type="message")
             )
@@ -173,11 +231,29 @@ class OpenAIClient(BaseLLMClient):
                 if not msg.content:
                     raise ValueError("Message content is required")
                 if msg.role == "system":
-                    openai_messages.append({"role": "system", "content": msg.content})
+                    message_dict = {"role": "system", "content": msg.content}
+                    # Add summary if not using conversation state (manual mode)
+                    if not self.use_conversation_state:
+                        message_dict["summary"] = (
+                            msg.content[:100] + "..." if len(msg.content) > 100 else msg.content
+                        )
+                    openai_messages.append(message_dict)
                 elif msg.role == "user":
-                    openai_messages.append({"role": "user", "content": msg.content})
+                    message_dict = {"role": "user", "content": msg.content}
+                    # Add summary if not using conversation state (manual mode)
+                    if not self.use_conversation_state:
+                        message_dict["summary"] = (
+                            msg.content[:100] + "..." if len(msg.content) > 100 else msg.content
+                        )
+                    openai_messages.append(message_dict)
                 elif msg.role == "assistant":
-                    openai_messages.append({"role": "assistant", "content": msg.content})
+                    message_dict = {"role": "assistant", "content": msg.content}
+                    # Add summary if not using conversation state (manual mode)
+                    if not self.use_conversation_state:
+                        message_dict["summary"] = (
+                            msg.content[:100] + "..." if len(msg.content) > 100 else msg.content
+                        )
+                    openai_messages.append(message_dict)
                 else:
                     raise ValueError(f"Invalid message role: {msg.role}")
         return openai_messages
@@ -199,6 +275,34 @@ class OpenAIClient(BaseLLMClient):
         if tool_call_result.error:
             result_content += f"\nError: {tool_call_result.error}"
         result_content = result_content.strip()
+
+        # Remove the function call from pending calls when we get the result
+        call_id = tool_call_result.call_id
+        if call_id in self.pending_function_calls:
+            # If not using conversation state, add the pending function call to history
+            # but only if it's not already there (avoid duplicates)
+            if not self.use_conversation_state:
+                pending_call = self.pending_function_calls[call_id]
+                # Check if this function call is already in history
+                call_already_in_history = any(
+                    hasattr(msg, "call_id") and getattr(msg, "call_id", None) == call_id
+                    for msg in self.message_history
+                )
+                if not call_already_in_history:
+                    # Add reasoning block first if it exists (required by OpenAI)
+                    if hasattr(pending_call, "get") and "id" in pending_call:
+                        # Look for associated reasoning blocks
+                        for reasoning_id, reasoning_block in list(
+                            self.pending_reasoning_blocks.items()
+                        ):
+                            # Add the reasoning block before the function call
+                            self.message_history.append(reasoning_block)
+                            # Remove from pending reasoning blocks
+                            del self.pending_reasoning_blocks[reasoning_id]
+                            break  # Only add one reasoning block per function call
+
+                    self.message_history.append(pending_call)
+            del self.pending_function_calls[call_id]
 
         return FunctionCallOutput(
             type="function_call_output",  # Explicitly set the type field

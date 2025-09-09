@@ -59,6 +59,8 @@ class TraeAgent(BaseAgent):
 
         if self.mcp_tools:
             self._tools.extend(self.mcp_tools)
+            mcp_tools_section = self._build_mcp_tools_section()
+            self._initial_messages.insert(1, LLMMessage(role="system", content=mcp_tools_section))
 
     async def discover_mcp_tools(self):
         if self.mcp_servers_config:
@@ -160,6 +162,20 @@ class TraeAgent(BaseAgent):
     def get_system_prompt(self) -> str:
         """Get the system prompt for TraeAgent."""
         return TRAE_AGENT_SYSTEM_PROMPT
+
+    def _build_mcp_tools_section(self) -> str:
+        """Build the MCP tools section for the system prompt."""
+        if not self.mcp_tools:
+            return ""
+
+        mcp_tools_info = []
+        mcp_tools_info.append("# Available MCP Tools")
+        mcp_tools_info.append("")
+
+        for tool in self.mcp_tools:
+            mcp_tools_info.append(f"- **{tool.name}**: {tool.description}")
+
+        return "\n".join(mcp_tools_info)
 
     @override
     def reflect_on_result(self, tool_results: list[ToolResult]) -> str | None:

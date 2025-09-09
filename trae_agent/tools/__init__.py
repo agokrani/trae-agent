@@ -10,6 +10,7 @@ from trae_agent.tools.edit_tool import TextEditorTool
 from trae_agent.tools.json_edit_tool import JSONEditTool
 from trae_agent.tools.sequential_thinking_tool import SequentialThinkingTool
 from trae_agent.tools.task_done_tool import TaskDoneTool
+from trae_agent.tools.todo_write_tool import TodoWriteTool
 
 __all__ = [
     "Tool",
@@ -22,6 +23,7 @@ __all__ = [
     "SequentialThinkingTool",
     "TaskDoneTool",
     "CKGTool",
+    "TodoWriteTool",
 ]
 
 tools_registry: dict[str, type[Tool]] = {
@@ -31,4 +33,5 @@ tools_registry: dict[str, type[Tool]] = {
     "sequentialthinking": SequentialThinkingTool,
     "task_done": TaskDoneTool,
     "ckg": CKGTool,
+    "todo_write": TodoWriteTool,
 }
