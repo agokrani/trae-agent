@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from functools import cached_property
 from typing import TypeAlias, override
 
+from ..utils.schema_transformer import transform_schema_for_openai
+
 ParamSchemaValue: TypeAlias = str | list[str] | bool | dict[str, object]
 Property: TypeAlias = dict[str, ParamSchemaValue]
 
@@ -156,7 +158,11 @@ class Tool(ABC):
                 param_schema["enum"] = param.enum
 
             if param.items:
-                param_schema["items"] = param.items
+                # Transform nested schemas for OpenAI compatibility
+                if self.model_provider == "openai" and isinstance(param.items, dict):
+                    param_schema["items"] = transform_schema_for_openai(param.items)
+                else:
+                    param_schema["items"] = param.items
 
             # For OpenAI, nested objects also need additionalProperties: false
             if self.model_provider == "openai" and param.type == "object":
