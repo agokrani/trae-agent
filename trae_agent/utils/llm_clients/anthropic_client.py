@@ -38,17 +38,23 @@ class AnthropicClient(BaseLLMClient):
         model_config: ModelConfig,
         tool_schemas: list[anthropic.types.ToolUnionParam] | anthropic.NotGiven,
     ) -> anthropic.types.Message:
-        """Create a response using Anthropic API. This method will be decorated with retry logic."""
-        return self.client.messages.create(
+        """Create a response using Anthropic API with streaming support. This method will be decorated with retry logic."""
+        with self.client.messages.stream(
             model=model_config.model,
             messages=self.message_history,
             max_tokens=model_config.max_tokens,
             system=self.system_message,
             tools=tool_schemas,
             temperature=model_config.temperature,
-            top_p=model_config.top_p,
+            # top_p=model_config.top_p,
             top_k=model_config.top_k,
-        )
+        ) as stream:
+            # Consume the entire stream
+            for _ in stream:
+                pass
+
+            # Return the final accumulated message with complete tool calls
+            return stream.get_final_message()
 
     @override
     def chat(
@@ -78,11 +84,14 @@ class AnthropicClient(BaseLLMClient):
                         TextEditor20250429(
                             name="str_replace_based_edit_tool",
                             type="text_editor_20250429",
+                            # input_schema=tool.get_input_schema()
                         )
                     )
                 elif tool.name == "bash":
                     tool_schemas.append(
-                        anthropic.types.ToolBash20250124Param(name="bash", type="bash_20250124")
+                        anthropic.types.ToolBash20250124Param(
+                            name="bash", type="bash_20250124"
+                        )  # ,input_schema=tool.get_input_schema())
                     )
                 else:
                     tool_schemas.append(
@@ -92,7 +101,6 @@ class AnthropicClient(BaseLLMClient):
                             input_schema=tool.get_input_schema(),
                         )
                     )
-
         # Apply retry decorator to the API call
         retry_decorator = retry_with(
             func=self._create_anthropic_response,
