@@ -171,7 +171,9 @@ class BaseAgent(ABC):
         if self.llm_indicates_task_completed(llm_response):
             if self._is_task_completed(llm_response):
                 execution.agent_state = AgentState.COMPLETED
-                execution.final_result = llm_response.content
+                # Use message from task_done tool if available, otherwise use LLM response content
+                task_done_message = self._extract_task_done_message(llm_response)
+                execution.final_result = task_done_message or llm_response.content
                 execution.success = True
                 return messages
             else:
@@ -223,6 +225,17 @@ class BaseAgent(ABC):
         """Return a message indicating that the task is incomplete. Override for custom logic."""
         return "The task is incomplete. Please try again."
 
+    def _extract_task_done_message(self, llm_response: LLMResponse) -> str | None:
+        """Extract message from task_done tool call."""
+        if not llm_response.tool_calls:
+            return None
+
+        for tool_call in llm_response.tool_calls:
+            if tool_call.name == "task_done":
+                message = tool_call.arguments.get("message")
+                return str(message) if message is not None else None
+        return None
+
     @abstractmethod
     async def cleanup_mcp_clients(self) -> None:
         """Clean up MCP clients. Override in subclasses that use MCP."""
@@ -265,7 +278,7 @@ class BaseAgent(ABC):
             messages = [
                 LLMMessage(
                     role="user",
-                    content="It seems that you have not completed the task.",
+                    content="<system-reminder>The LLM provided a response without any tool calls. If the task is complete or you need clarification, please use the 'task_done' tool with an appropriate message. Otherwise, continue with the next step using available tools.</system-reminder>\n\nPlease continue with the next step, or if the task is complete or you need clarification, use the 'task_done' tool to provide a summary or ask your questions.",
                 )
             ]
             return messages
