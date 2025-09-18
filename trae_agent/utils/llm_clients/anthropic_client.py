@@ -216,9 +216,14 @@ class AnthropicClient(BaseLLMClient):
             result += tool_call_result.error
         result = result.strip()
 
+        # Ensure error results always have content to satisfy Anthropic API requirements
+        is_error = not tool_call_result.success
+        if is_error and not result:
+            result = f"Tool '{tool_call_result.name}' failed with no error message"
+
         return anthropic.types.ToolResultBlockParam(
             tool_use_id=tool_call_result.call_id,
             type="tool_result",
             content=result,
-            is_error=not tool_call_result.success,
+            is_error=is_error,
         )
