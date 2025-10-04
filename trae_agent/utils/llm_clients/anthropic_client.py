@@ -7,7 +7,7 @@ import json
 from typing import override
 
 import anthropic
-from anthropic.types.tool_union_param import TextEditor20250429
+from anthropic.types.tool_union_param import ToolTextEditor20250728Param
 
 from trae_agent.tools.base import Tool, ToolCall, ToolResult
 from trae_agent.utils.config import ModelConfig
@@ -81,9 +81,9 @@ class AnthropicClient(BaseLLMClient):
             for tool in tools:
                 if tool.name == "str_replace_based_edit_tool":
                     tool_schemas.append(
-                        TextEditor20250429(
+                        ToolTextEditor20250728Param(
                             name="str_replace_based_edit_tool",
-                            type="text_editor_20250429",
+                            type="text_editor_20250728",
                             # input_schema=tool.get_input_schema()
                         )
                     )
