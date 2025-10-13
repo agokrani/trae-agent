@@ -17,6 +17,7 @@ class LLMProvider(Enum):
 
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
+    BEDROCK = "bedrock"
     AZURE = "azure"
     OLLAMA = "ollama"
     OPENROUTER = "openrouter"
@@ -37,6 +38,10 @@ class LLMClient:
 
                 self.client: BaseLLMClient = OpenAIClient(model_config)
             case LLMProvider.ANTHROPIC:
+                from .anthropic_client import AnthropicClient
+
+                self.client = AnthropicClient(model_config)
+            case LLMProvider.BEDROCK:
                 from .anthropic_client import AnthropicClient
 
                 self.client = AnthropicClient(model_config)

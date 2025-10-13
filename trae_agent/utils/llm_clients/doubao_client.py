@@ -16,7 +16,7 @@ class DoubaoProvider(ProviderConfig):
     """Doubao provider configuration."""
 
     def create_client(
-        self, api_key: str, base_url: str | None, api_version: str | None
+        self, api_key: str | None, base_url: str | None, api_version: str | None
     ) -> openai.OpenAI:
         """Create OpenAI client with Doubao base URL."""
         return openai.OpenAI(base_url=base_url, api_key=api_key)

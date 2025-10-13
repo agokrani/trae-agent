@@ -36,7 +36,7 @@ class ProviderConfig(ABC):
 
     @abstractmethod
     def create_client(
-        self, api_key: str, base_url: str | None, api_version: str | None
+        self, api_key: str | None, base_url: str | None, api_version: str | None
     ) -> openai.OpenAI:
         """Create the OpenAI client instance."""
         pass

@@ -18,7 +18,7 @@ class OpenRouterProvider(ProviderConfig):
     """OpenRouter provider configuration."""
 
     def create_client(
-        self, api_key: str, base_url: str | None, api_version: str | None
+        self, api_key: str | None, base_url: str | None, api_version: str | None
     ) -> openai.OpenAI:
         """Create OpenAI client with OpenRouter base URL."""
         return openai.OpenAI(api_key=api_key, base_url=base_url)

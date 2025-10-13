@@ -18,10 +18,11 @@ class ModelProvider:
     """
     Model provider configuration. For official model providers such as OpenAI and Anthropic,
     the base_url is optional. api_version is required for Azure.
+    For Bedrock, api_key is optional as it uses AWS credentials from environment.
     """
 
-    api_key: str
     provider: str
+    api_key: str | None = None
     base_url: str | None = None
     api_version: str | None = None
 
