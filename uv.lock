@@ -140,6 +140,20 @@ wheels = [
 ]
 
 [[package]]
+name = "boto3"
+version = "1.40.54"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "botocore" },
+    { name = "jmespath" },
+    { name = "s3transfer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5c/89/36c09108d8d35e6f722cdc9ff169f003c7458657ecf04c3a375dca973ccb/boto3-1.40.54.tar.gz", hash = "sha256:5f7dbf8539d26e0ee973baea49d0db8c1ee57707a785c5a23307241fdba04327", size = 111594 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f0/ac/41be779a035210b9223560316e1e5bd994f786424acc96383d0ba5fb8613/boto3-1.40.54-py3-none-any.whl", hash = "sha256:81d32d4f09ecddc2c48aa3d0acfd5dbd2d2e3e2718c353a56cb3af59b2e22148", size = 139321 },
+]
+
+[[package]]
 name = "botocore"
 version = "1.40.54"
 source = { registry = "https://pypi.org/simple" }
@@ -1473,6 +1487,18 @@ wheels = [
 ]
 
 [[package]]
+name = "s3transfer"
+version = "0.14.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "botocore" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/62/74/8d69dcb7a9efe8baa2046891735e5dfe433ad558ae23d9e3c14c633d1d58/s3transfer-0.14.0.tar.gz", hash = "sha256:eff12264e7c8b4985074ccce27a3b38a485bb7f7422cc8046fee9be4983e4125", size = 151547 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/48/f0/ae7ca09223a81a1d890b2557186ea015f6e0502e9b8cb8e1813f1d8cfa4e/s3transfer-0.14.0-py3-none-any.whl", hash = "sha256:ea3b790c7077558ed1f02a3072fb3cb992bbbd253392f4b6e9e8976941c7d456", size = 85712 },
+]
+
+[[package]]
 name = "six"
 version = "1.17.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1568,6 +1594,7 @@ source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
     { name = "asyncclick" },
+    { name = "boto3" },
     { name = "botocore" },
     { name = "click" },
     { name = "google-genai" },
@@ -1609,6 +1636,7 @@ dev = [
 requires-dist = [
     { name = "anthropic", specifier = "==0.69.0" },
     { name = "asyncclick", specifier = ">=8.0.0" },
+    { name = "boto3", specifier = ">=1.40.54" },
     { name = "botocore", specifier = ">=1.40.54" },
     { name = "click", specifier = ">=8.0.0" },
     { name = "datasets", marker = "extra == 'evaluation'", specifier = ">=3.6.0" },
