@@ -415,6 +415,8 @@ class RichCLIConsole(CLIConsole):
             await self.app.run_async()
         finally:
             self._is_running = False
+            # Clean up any pending background tasks
+            self._cleanup_background_tasks()
 
     @override
     def update_status(
@@ -472,10 +474,18 @@ class RichCLIConsole(CLIConsole):
         # For now, return current directory. Could be enhanced with a dialog
         return os.getcwd()
 
+    def _cleanup_background_tasks(self):
+        """Cancel any pending background lakeview tasks to prevent event loop errors."""
+        for step in self.console_step_history.values():
+            if step.lake_view_panel_generator and not step.lake_view_panel_generator.done():
+                step.lake_view_panel_generator.cancel()
+
     @override
     def stop(self):
         """Stop the console and cleanup resources."""
         self.should_exit = True
+        # Clean up background tasks
+        self._cleanup_background_tasks()
         if self.app:
             _ = self.app.exit()
 

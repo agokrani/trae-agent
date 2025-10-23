@@ -122,6 +122,9 @@ class SimpleCLIConsole(CLIConsole):
         if self.agent_execution:
             self._print_execution_summary()
 
+        # Clean up any pending background tasks
+        self._cleanup_background_tasks()
+
     def _print_step_update(
         self, agent_step: AgentStep, agent_execution: AgentExecution | None = None
     ):
@@ -292,11 +295,17 @@ class SimpleCLIConsole(CLIConsole):
         except (EOFError, KeyboardInterrupt):
             return ""
 
+    def _cleanup_background_tasks(self):
+        """Cancel any pending background lakeview tasks to prevent event loop errors."""
+        for step in self.console_step_history.values():
+            if step.lake_view_panel_generator and not step.lake_view_panel_generator.done():
+                step.lake_view_panel_generator.cancel()
+
     @override
     def stop(self):
         """Stop the console and cleanup resources."""
-        # Simple console doesn't need explicit cleanup
-        pass
+        # Clean up background tasks
+        self._cleanup_background_tasks()
 
     async def _create_lakeview_step_display(self, agent_step: AgentStep) -> Panel | None:
         """Create lakeview display for a step."""
