@@ -23,8 +23,8 @@ dependencies = [
     "asyncclick>=8.0.0",
     "pyyaml>=6.0.2",
     "textual>=0.50.0",
-    "botocore>=1.40.54",
-    "boto3>=1.40.54",
+    "botocore>=1.40.55",
+    "boto3>=1.40.55",
 ]
 
 [project.optional-dependencies]

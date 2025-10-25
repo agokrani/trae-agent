@@ -138,6 +138,7 @@ class BaseAgent(ABC):
                     break
 
             if step_number > self._max_steps and not execution.success:
+                execution.agent_state = AgentState.ERROR
                 execution.final_result = "Task execution exceeded maximum steps without completion."
 
         except Exception as e:
