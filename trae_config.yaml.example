@@ -22,11 +22,15 @@ model_providers:
     anthropic:
         api_key: your_anthropic_api_key
         provider: anthropic
+    bedrock:
+        provider: bedrock
+        aws_region: ${AWS_REGION:-us-east-1}
+        aws_profile: ${AWS_PROFILE:-}
 
 models:
     trae_agent_model:
-        model_provider: anthropic
-        model: claude-4-sonnet
+        model_provider: bedrock
+        model: us.anthropic.claude-sonnet-4-20250514-v1:0
         max_tokens: 4096
         temperature: 0.5
         top_p: 1

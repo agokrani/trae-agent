@@ -178,7 +178,14 @@ class BaseAgent(ABC):
                 return messages
             else:
                 execution.agent_state = AgentState.RUNNING
-                return [LLMMessage(role="user", content=self.task_incomplete_message())]
+                # FIX: If there were tool calls in the response, handle them first before sending incomplete message
+                if llm_response.tool_calls:
+                    tool_result_messages = await self._tool_call_handler(llm_response.tool_calls, step)
+                    # Add the incomplete task message after tool results
+                    tool_result_messages.append(LLMMessage(role="user", content=self.task_incomplete_message()))
+                    return tool_result_messages
+                else:
+                    return [LLMMessage(role="user", content=self.task_incomplete_message())]
         else:
             tool_calls = llm_response.tool_calls
             return await self._tool_call_handler(tool_calls, step)
