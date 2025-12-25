@@ -17,13 +17,16 @@ class ConfigError(Exception):
 class ModelProvider:
     """
     Model provider configuration. For official model providers such as OpenAI and Anthropic,
-    the base_url is optional. api_version is required for Azure.
+    the base_url is optional. api_version is required for Azure. AWS Bedrock providers rely on
+    standard AWS credentials and optionally accept aws_region/aws_profile hints.
     """
 
-    api_key: str
-    provider: str
+    api_key: str | None = None
+    provider: str | None = None
     base_url: str | None = None
     api_version: str | None = None
+    aws_region: str | None = None
+    aws_profile: str | None = None
 
 
 @dataclass
@@ -90,10 +93,10 @@ class ModelConfig:
             env_var=env_var_api_base_url,
         )
 
-        if resolved_api_key:
+        if resolved_api_key is not None:
             self.model_provider.api_key = str(resolved_api_key)
 
-        if resolved_api_base_url:
+        if resolved_api_base_url is not None:
             self.model_provider.base_url = str(resolved_api_base_url)
 
 
