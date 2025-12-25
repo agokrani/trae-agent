@@ -14,7 +14,7 @@ class BaseLLMClient(ABC):
     """Base class for LLM clients."""
 
     def __init__(self, model_config: ModelConfig):
-        self.api_key: str = model_config.model_provider.api_key
+        self.api_key: str | None = model_config.model_provider.api_key
         self.base_url: str | None = model_config.model_provider.base_url
         self.api_version: str | None = model_config.model_provider.api_version
         self.trajectory_recorder: TrajectoryRecorder | None = None  # TrajectoryRecorder instance
