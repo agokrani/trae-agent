@@ -1,0 +1,26 @@
+agents:
+    trae_agent:
+        enable_lakeview: false
+        model: gpt5_openai
+        max_steps: 200
+        tools:
+            - bash
+            - str_replace_based_edit_tool
+            - sequentialthinking
+            - task_done
+
+model_providers:
+    openai:
+        provider: openai
+        # Uses OPENAI_API_KEY from environment
+
+models:
+    gpt5_openai:
+        model_provider: openai
+        model: gpt-5
+        max_tokens: 32768
+        temperature: 0.5
+        top_p: 1
+        top_k: 0
+        max_retries: 10
+        parallel_tool_calls: true

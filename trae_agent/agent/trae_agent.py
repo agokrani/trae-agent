@@ -188,12 +188,39 @@ class TraeAgent(BaseAgent):
             return ""
         os.chdir(self.project_path)
         try:
-            if not self.base_commit:
-                stdout = subprocess.check_output(["git", "--no-pager", "diff"]).decode()
-            else:
-                stdout = subprocess.check_output(
-                    ["git", "--no-pager", "diff", self.base_commit, "HEAD"]
-                ).decode()
+            stdout = ""
+            if self.base_commit:
+                try:
+                    # Try diff from base_commit to HEAD
+                    stdout = subprocess.check_output(
+                        ["git", "--no-pager", "diff", self.base_commit, "HEAD"]
+                    ).decode()
+                except subprocess.CalledProcessError:
+                    pass  # Will try fallbacks below
+
+            # If no result yet, try uncommitted changes
+            if not stdout.strip():
+                try:
+                    stdout = subprocess.check_output(["git", "--no-pager", "diff"]).decode()
+                except subprocess.CalledProcessError:
+                    pass
+
+            # If still no result, try diff from parent commit (for committed changes)
+            if not stdout.strip():
+                try:
+                    stdout = subprocess.check_output(
+                        ["git", "--no-pager", "diff", "HEAD~1", "HEAD"]
+                    ).decode()
+                except subprocess.CalledProcessError:
+                    pass
+
+            # Last resort: check if model_patch.diff exists
+            if not stdout.strip():
+                model_patch_path = os.path.join(self.project_path, "model_patch.diff")
+                if os.path.exists(model_patch_path):
+                    with open(model_patch_path, "r") as f:
+                        stdout = f.read()
+
         except (subprocess.CalledProcessError, FileNotFoundError):
             stdout = ""
         finally:
